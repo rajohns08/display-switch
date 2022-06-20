@@ -70,68 +70,7 @@ fn try_switch_display(handle: &mut Handle, display_name: &str, input: InputSourc
 	}
 }
 
-fn displays() -> Vec<Display> {
-    let displays = Display::enumerate();
-    if !displays.is_empty() {
-        return displays;
-    }
-
-    // Under some conditions, such as when using a KVM, it's possible for the USB connection/disconnection events to
-    // occur before the display(s) become available. We retry once after a bit of a delay in order to be more
-    // forgiving with regard to timing.
-    let delay_duration = time::Duration::from_millis(RETRY_DELAY_MS);
-    warn!(
-        "Did not detect any DDC-compatible displays. Retrying after {} second(s)...",
-        delay_duration.as_secs()
-    );
-    thread::sleep(delay_duration);
-    return Display::enumerate();
-}
-
-pub fn log_current_source() {
-    let displays = displays();
-    if displays.is_empty() {
-        error!("Did not detect any DDC-compatible displays!");
-        return;
-    }
-    let unique_names = are_display_names_unique(&displays);
-    for (index, mut display) in displays.into_iter().enumerate() {
-        let display_name = display_name(&display, if unique_names { None } else { Some(index + 1) });
-        match display.handle.get_vcp_feature(INPUT_SELECT) {
-            Ok(raw_source) => {
-                let source = InputSource::from(raw_source.value());
-                info!("Display {} is currently set to {}", display_name, source);
-            }
-            Err(err) => {
-                error!("Failed to get current input for display {}: {:?}", display_name, err);
-            }
-        }
-    }
-}
-
 pub fn switch(config: &Configuration, switch_direction: SwitchDirection) {
-    let displays = displays();
-    if displays.is_empty() {
-        error!("Did not detect any DDC-compatible displays!");
-        return;
-    }
-    let unique_names = are_display_names_unique(&displays);
-    for (index, mut display) in displays.into_iter().enumerate() {
-        let display_name = display_name(&display, if unique_names { None } else { Some(index + 1) });
-        let input_sources = config.configuration_for_monitor(&display_name);
-        debug!("Input sources found for display {}: {:?}", display_name, input_sources);
-        if let Some(input) = input_sources.source(switch_direction) {
-			try_switch_display(&mut display.handle, &display_name, input);
-        } else {
-            info!(
-                "Display {} is not configured to switch on USB {}",
-                display_name, switch_direction
-            );
-        }
-        if let Some(execute_command) = input_sources.execute_command(switch_direction) {
-            run_command(execute_command)
-        }
-    }
     if let Some(execute_command) = config.default_input_sources.execute_command(switch_direction) {
         run_command(execute_command)
     }
